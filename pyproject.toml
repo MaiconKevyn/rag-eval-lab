@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-eval-lab"
+version = "0.1.0"
+description = "RAG evaluation lab — declarative experimentation with LLM-as-a-Judge and MLflow tracking."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Maicon Kevyn" }]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # Core LLM / API
+    "openai>=1.40.0",
+    "tenacity>=8.2.0",
+    "tiktoken>=0.7.0",
+    # Vector store
+    "pinecone>=5.0.0",
+    # PDF + chunking
+    "pypdf>=4.0.0",
+    "langchain-text-splitters>=0.2.0",
+    # Config
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    # CLI + UX
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    # Tracking + reporting
+    "mlflow>=2.10.0",
+    "jinja2>=3.1.0",
+    "pandas>=2.2.0",
+    # Numerical
+    "numpy>=1.26.0",
+    "scikit-learn>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

@@ -1,2 +1,38 @@
-.idea/
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
 .venv/
+venv/
+.venv_old/
+# IDEs
+.idea/
+.vscode/
+.codex
+.claude
+# Project data — corpus tracked, generated artifacts ignored
+data/runs/
+data/benchmark/
+data/cache/
+
+# MLflow
+mlruns/
+
+# Reports (generated)
+reports/*.html
+
+# Misc
+node_modules/
+docs/
+.DS_Store

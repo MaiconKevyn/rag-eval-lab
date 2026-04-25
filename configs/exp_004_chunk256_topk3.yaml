@@ -1,0 +1,26 @@
+experiment_id: "exp_004_chunk256_topk3"
+description: "Low recall variant — chunk_size=256, text-embedding-3-small, top_k=3"
+corpus: "data/corpus/agentic_ai_landscape.pdf"
+
+chunking:
+  chunk_size: 256
+  chunk_overlap: 32
+  separators: ["\n\n", "\n", ". ", " "]
+
+embedding:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  batch_size: 100
+
+retrieval:
+  top_k: 3
+  score_threshold: 0.75
+
+generation:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  temperature: 0.0
+  max_tokens: 512
+  system_prompt: |
+    Você é um assistente que responde perguntas usando APENAS o contexto fornecido.
+    Se o contexto for insuficiente, diga "Não há informação suficiente no contexto."
