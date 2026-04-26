@@ -20,11 +20,11 @@ def test_sha256_of_file_is_stable(tmp_path: Path) -> None:
 
 def test_json_roundtrip(tmp_path: Path) -> None:
     p = tmp_path / "nested" / "data.json"
-    payload = {"a": 1, "b": [1, 2, 3], "c": "ã"}
+    payload = {"a": 1, "b": [1, 2, 3], "c": "snowman ☃"}
     write_json(p, payload)
     assert read_json(p) == payload
     # Non-ascii preserved (ensure_ascii=False)
-    assert "ã" in p.read_text(encoding="utf-8")
+    assert "☃" in p.read_text(encoding="utf-8")
 
 
 def test_estimate_tokens_returns_positive() -> None:
@@ -51,6 +51,22 @@ def test_llm_client_complete_with_mock(mock_openai_client) -> None:
     _, kwargs = mock_openai_client.chat.completions.create.call_args
     assert kwargs["response_format"] == {"type": "json_object"}
     assert kwargs["temperature"] == 0.0
+
+
+def test_llm_client_uses_max_completion_tokens_for_gpt5_family(mock_openai_client) -> None:
+    mock_openai_client.set_chat_response("ok")
+    client = LLMClient(client=mock_openai_client)
+
+    client.complete(
+        messages=[{"role": "user", "content": "hi"}],
+        model="gpt-5.4-mini",
+        max_tokens=123,
+    )
+
+    _, kwargs = mock_openai_client.chat.completions.create.call_args
+    assert "max_completion_tokens" in kwargs
+    assert kwargs["max_completion_tokens"] == 123
+    assert "max_tokens" not in kwargs
 
 
 def test_llm_client_embed_with_mock(mock_openai_client) -> None:

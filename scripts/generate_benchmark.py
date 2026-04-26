@@ -11,7 +11,7 @@ Optional flags for cheaper test runs:
     --max-chunks 20          # use only first N chunks
     --chunk-size 256
     --chunk-overlap 32
-    --model gpt-4o-mini
+    --model gpt-5.4-mini
     --similarity-threshold 0.92
 """
 
@@ -48,7 +48,7 @@ def main(
     n_per_chunk: int = typer.Option(3, "--n-per-chunk", help="QA pairs to generate per chunk."),
     chunk_size: int = typer.Option(256, "--chunk-size"),
     chunk_overlap: int = typer.Option(32, "--chunk-overlap"),
-    model: str = typer.Option("gpt-4o-mini", "--model", help="LLM model for generation."),
+    model: str = typer.Option("gpt-5.4-mini", "--model", help="LLM model for generation."),
     similarity_threshold: float = typer.Option(0.92, "--similarity-threshold"),
     max_chunks: int = typer.Option(0, "--max-chunks", help="Limit chunks (0 = all). For testing."),
     log_level: str = typer.Option("INFO", "--log-level"),

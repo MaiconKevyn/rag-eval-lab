@@ -13,7 +13,7 @@ from threading import Lock
 from typing import Any
 
 import tiktoken
-from openai import APIConnectionError, APIError, OpenAI, RateLimitError
+from openai import APIConnectionError, APIError, BadRequestError, OpenAI, RateLimitError
 from tenacity import (
     before_sleep_log,
     retry,
@@ -32,6 +32,8 @@ _PRICING_USD_PER_1M: dict[str, tuple[float, float]] = {
     # chat models: (prompt, completion)
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
+    "gpt-5.4-mini": (0.75, 4.50),
+    "gpt-5.4": (2.50, 15.00),
     # embeddings: (input, 0)
     "text-embedding-3-small": (0.02, 0.0),
     "text-embedding-3-large": (0.13, 0.0),
@@ -97,11 +99,15 @@ def _encoder_for(model: str) -> tiktoken.Encoding:
         return tiktoken.get_encoding("cl100k_base")
 
 
-def estimate_tokens(text: str, model: str = "gpt-4o-mini") -> int:
+def estimate_tokens(text: str, model: str = "gpt-5.4-mini") -> int:
     return len(_encoder_for(model).encode(text))
 
 
-_RETRYABLE = (RateLimitError, APIConnectionError, APIError)
+_RETRYABLE = (RateLimitError, APIConnectionError)
+
+
+def _uses_max_completion_tokens(model: str) -> bool:
+    return model.startswith("gpt-5")
 
 
 class LLMClient:
@@ -131,7 +137,7 @@ class LLMClient:
     def complete(
         self,
         messages: list[dict[str, str]],
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5.4-mini",
         *,
         json_mode: bool = False,
         temperature: float = 0.0,
@@ -153,7 +159,8 @@ class LLMClient:
                 "temperature": temperature,
             }
             if max_tokens is not None:
-                kwargs["max_tokens"] = max_tokens
+                token_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
+                kwargs[token_key] = max_tokens
             if seed is not None:
                 kwargs["seed"] = seed
             if json_mode:
@@ -161,7 +168,10 @@ class LLMClient:
             kwargs.update(extra)
             return self._client.chat.completions.create(**kwargs)
 
-        resp = _call()
+        try:
+            resp = _call()
+        except BadRequestError:
+            raise
         choice = resp.choices[0]
         usage = resp.usage
         prompt_t = getattr(usage, "prompt_tokens", 0) or 0

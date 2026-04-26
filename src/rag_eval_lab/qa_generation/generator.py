@@ -14,15 +14,24 @@ from rag_eval_lab.utils.logging import get_logger
 log = get_logger(__name__)
 
 QA_PROMPT = """\
-Dado o trecho abaixo, gere {n} pares (pergunta, resposta esperada).
+Given the chunk below, generate {n} (question, expected_answer) pairs that test knowledge of the content.
 
-Regras estritas:
-- A pergunta deve ser respondível APENAS com o trecho fornecido
-- A resposta deve ser fiel ao trecho, sem inferências externas
-- Varie o tipo: factual, comparativo, "por que", "como"
-- Se o trecho for muito curto/genérico para gerar {n} perguntas boas, gere menos
+Strict rules:
+- The question must be answerable using ONLY the information in the provided chunk
+- The expected answer must be faithful to the chunk, with no outside inference
+- Vary the question type: factual, comparative, why, how
+- If the chunk is too short or generic to produce {n} good questions, generate fewer
+- Write both `question` and `expected_answer` in English only
+- Do NOT reference the chunk or document as an artifact: never use phrases like
+  "in the chunk", "in this chunk", "in the text", "in the passage", "in this document",
+  "in the section", "the chunk says", "what is mentioned in", "what is shown in"
+- Ask about the KNOWLEDGE contained in the chunk, not about the chunk itself
+  BAD:  "What is the title of the chunk?"
+  BAD:  "Which organization is named at the top of the document in the chunk?"
+  GOOD: "What publication does the OECD release on AI conceptual foundations?"
+  GOOD: "What role does memory play in agentic AI systems?"
 
-Retorne APENAS JSON válido neste schema:
+Return ONLY valid JSON in this schema:
 {{
   "qa_pairs": [
     {{
@@ -34,7 +43,7 @@ Retorne APENAS JSON válido neste schema:
   ]
 }}
 
-Trecho ({chunk_id}):
+Chunk ({chunk_id}):
 {chunk_text}
 """
 
@@ -46,7 +55,7 @@ class QAGenerator:
     def __init__(
         self,
         llm_client: LLMClient,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5.4-mini",
         n_per_chunk: int = 3,
         temperature: float = 0.7,
     ) -> None:
@@ -149,10 +158,10 @@ class QAGenerator:
 def _normalise_type(raw: str) -> str:
     """Map LLM free-form type strings to our Literal values."""
     r = raw.strip().lower()
-    if r in ("why", "por que", "por_que", "porquê"):
+    if r == "why":
         return "why"
-    if r in ("how", "como"):
+    if r == "how":
         return "how"
-    if r in ("comparative", "comparativo", "comparison"):
+    if r in ("comparative", "comparison"):
         return "comparative"
     return "factual"

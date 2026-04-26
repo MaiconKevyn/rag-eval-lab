@@ -50,32 +50,12 @@ This project is not just "yet another RAG." It is an **experimentation platform*
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                      RAG EVALUATION LAB - Pipeline                      │
-└──────────────────────────────────────────────────────────────────────────┘
+![RAG Evaluation Lab architecture](assets/architecture.png)
 
-   PDFs                            ┌────────────────────────┐
-   ──────►   ① INGESTION   ──────► │ Pinecone (namespaces) │
-   corpus/   chunker+embedder      │  • exp_001 -> vectors │
-                                   │  • exp_002 -> vectors │
-                                   └────────────┬───────────┘
-                                                │
-   PDFs                                         │
-   ──────►   ② QA GENERATION ────► benchmark_dataset.json
-   corpus/   LLM generates Q&A    (versioned ground truth)
-                                                │
-                                                │
-   YAML ─►   ③ RAG RUNNER    ─────► run_results.json
-   config    retriever+generator   {Q, expected_A, ctx, predicted_A}
-                                                │
-                                                │
-             ④ EVALUATION ──────► metrics.json
-             LLM-as-a-Judge       (faithfulness, relevancy, recall)
-                                                │
-                                                ▼
-             ⑤ MLflow Tracking ──► UI + reports/comparison.html
-             params + metrics + artifacts
+Regenerate this diagram with:
+
+```bash
+python scripts/generate_architecture_image.py
 ```
 
 **Architectural principles:**
@@ -96,7 +76,7 @@ This project is not just "yet another RAG." It is an **experimentation platform*
 | **Chunking** | `langchain-text-splitters` | `RecursiveCharacterTextSplitter` is state of the art |
 | **Embeddings** | `openai` SDK (`text-embedding-3-small`) | Abstraction allows swapping to `voyage`, `cohere` |
 | **Vector Store** | `pinecone` v8 | Native namespaces, free serverless tier |
-| **LLM** | `openai` SDK (`gpt-4o-mini`) | Cost/quality balance, JSON mode |
+| **LLM** | `openai` SDK (`gpt-5.4-mini`) | Stronger generation quality with moderate cost |
 | **Config** | `pydantic` v2 + `pyyaml` | Validates on load, fails before the API call |
 | **CLI** | `typer` | Declarative, type-safe |
 | **Tracking** | `mlflow` >= 2.10 | Built-in UI, side-by-side comparison |
@@ -220,7 +200,10 @@ python scripts/generate_benchmark.py \
     --out data/benchmark/
 
 # 3. Run the RAG experiment  [available in CP3]
-python scripts/run_experiment.py --config configs/exp_001_chunk256_ada.yaml
+# If the YAML does not define `benchmark`, pass it explicitly:
+python scripts/run_experiment.py \
+    --config configs/exp_001_chunk256_ada.yaml \
+    --benchmark data/benchmark/benchmark_v1_<hash>_<date>.json
 
 # 4. Evaluate with LLM-as-a-Judge  [available in CP4]
 python scripts/evaluate_run.py --run data/runs/exp_001_chunk256_ada/run_results.json
@@ -248,7 +231,7 @@ Each YAML file controls the entire pipeline - chunking, embedding, retrieval, an
 
 ## Evaluation - LLM-as-a-Judge
 
-Each RAG answer is evaluated across **3 metrics** by a judge LLM (`gpt-4o-mini`, `temperature=0.0`):
+Each RAG answer is evaluated across **3 metrics** by a judge LLM (`gpt-5.4-mini`, `temperature=0.0`):
 
 | Metric | What it measures | Inputs |
 |---|---|---|

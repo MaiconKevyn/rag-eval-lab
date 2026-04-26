@@ -13,11 +13,16 @@ from rag_eval_lab.utils.logging import get_logger
 log = get_logger(__name__)
 
 _TRIVIAL_PATTERNS = [
-    r"o que (diz|fala|menciona|descreve|aborda|trata)\b",
-    r"do que (se trata|trata)\b",
-    r"qual (é o tema|o assunto|a ideia principal)\b",
-    r"(resuma|descreva|explique) o (documento|texto|trecho)\b",
-    r"o que é (mencionado|dito|descrito)\b",
+    # Artifact-referential — asking about the chunk/document as an object
+    r"\bchunk\b",                                                              # any mention of "chunk"
+    r"\bin (the|this) (document|text|passage|section)\b",                     # "in the document", "in this text"
+    r"what (does|is|was) (the )?(document|text|passage) (say|mention|describe|cover|state|discuss)\b",
+    r"what is mentioned in (the|this) (document|text|passage|section)\b",
+    r"what (is|are|was|were) (shown|displayed|stated|listed|presented|given|written) in\b",
+    r"(summarize|describe|explain) (the|this) (document|text|chunk|passage|section)\b",
+    # Vague / low-signal questions
+    r"what is the (main )?(topic|subject|idea|purpose|focus)\b",
+    r"what (does|did) (this|the) (author|document|text|passage) (argue|claim|suggest|state|say)\b",
 ]
 _TRIVIAL_RE = re.compile("|".join(_TRIVIAL_PATTERNS), re.IGNORECASE)
 

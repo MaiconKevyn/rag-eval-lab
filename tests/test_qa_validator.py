@@ -177,8 +177,8 @@ class TestQAValidatorTrivialFilter:
 
     def test_trivial_questions_removed(self) -> None:
         pairs = [
-            _qa("O que diz o documento?"),
-            _qa("Do que se trata o trecho?"),
+            _qa("What does the document say?"),
+            _qa("What is the main topic?"),
             _qa("What is the definition of an agent?"),
         ]
         kept = self._validator().filter_trivial(pairs)
@@ -190,6 +190,35 @@ class TestQAValidatorTrivialFilter:
         kept = self._validator().filter_trivial(pairs)
         assert len(kept) == 2
 
+    def test_chunk_referential_questions_removed(self) -> None:
+        pairs = [
+            _qa("What is the title of the chunk?"),
+            _qa("Which organization is named at the top of the document in the chunk?"),
+            _qa("What month and year are shown in the chunk?"),
+            _qa("What role does memory play in agentic AI systems?"),  # kept
+        ]
+        kept = self._validator().filter_trivial(pairs)
+        assert len(kept) == 1
+        assert kept[0].question == "What role does memory play in agentic AI systems?"
+
+    def test_in_document_pattern_removed(self) -> None:
+        pairs = [
+            _qa("What is stated in the document about planning?"),
+            _qa("What concepts are discussed in this document?"),
+            _qa("How does planning improve agent performance?"),  # kept
+        ]
+        kept = self._validator().filter_trivial(pairs)
+        assert len(kept) == 1
+
+    def test_case_insensitive(self) -> None:
+        pairs = [
+            _qa("What Is The Main Topic?"),
+            _qa("WHAT IS MENTIONED IN THE DOCUMENT?"),
+            _qa("What triggers a re-planning cycle in an agent?"),  # kept
+        ]
+        kept = self._validator().filter_trivial(pairs)
+        assert len(kept) == 1
+
 
 # ── _normalise_type ──────────────────────────────────────────────────────────
 
@@ -197,12 +226,8 @@ class TestQAValidatorTrivialFilter:
     ("factual", "factual"),
     ("FACTUAL", "factual"),
     ("why", "why"),
-    ("por que", "why"),
-    ("porquê", "why"),
     ("how", "how"),
-    ("como", "how"),
     ("comparative", "comparative"),
-    ("comparativo", "comparative"),
     ("unknown_type", "factual"),  # fallback
 ])
 def test_normalise_type(raw: str, expected: str) -> None:

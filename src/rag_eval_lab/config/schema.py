@@ -33,12 +33,12 @@ class RetrievalConfig(BaseModel):
 
 class GenerationConfig(BaseModel):
     provider: Literal["openai"] = "openai"
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-5.4-mini"
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_tokens: int = Field(default=512, gt=0, le=4096)
     system_prompt: str = (
-        "Você é um assistente que responde perguntas usando APENAS o contexto fornecido. "
-        "Se o contexto for insuficiente, diga 'Não há informação suficiente no contexto.'"
+        "You are an assistant that answers questions using ONLY the provided context. "
+        "If the context is insufficient, say 'There is not enough information in the context.'"
     )
 
 
@@ -57,4 +57,11 @@ class ExperimentConfig(BaseModel):
     def corpus_must_exist(cls, v: Path) -> Path:
         if not v.exists():
             raise ValueError(f"corpus path does not exist: {v}")
+        return v
+
+    @field_validator("benchmark", mode="after")
+    @classmethod
+    def benchmark_must_exist_if_set(cls, v: Path | None) -> Path | None:
+        if v is not None and not v.exists():
+            raise ValueError(f"benchmark path does not exist: {v}")
         return v

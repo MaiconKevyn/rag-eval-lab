@@ -125,3 +125,12 @@ class TestLoadConfig:
         assert cfg.embedding.model == "text-embedding-3-small"
         assert cfg.retrieval.top_k == 5
         assert cfg.generation.temperature == 0.0
+
+    def test_missing_benchmark_when_declared_raises(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"")
+        data = self._minimal_data(pdf)
+        data["benchmark"] = str(tmp_path / "missing.json")
+        p = self._write_yaml(tmp_path, data)
+        with pytest.raises(Exception, match="benchmark path does not exist"):
+            load_config(p)
