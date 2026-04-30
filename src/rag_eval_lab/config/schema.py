@@ -33,7 +33,7 @@ class RetrievalConfig(BaseModel):
 
 class GenerationConfig(BaseModel):
     provider: Literal["openai"] = "openai"
-    model: str = "gpt-5.4-mini"
+    model: str = "gpt-4o-mini"
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_tokens: int = Field(default=512, gt=0, le=4096)
     system_prompt: str = (

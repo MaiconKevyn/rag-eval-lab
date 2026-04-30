@@ -6,7 +6,7 @@
 [![Pinecone](https://img.shields.io/badge/Pinecone-v8-1E88E5.svg)](https://www.pinecone.io/)
 [![MLflow](https://img.shields.io/badge/MLflow-2.10%2B-0194E2.svg)](https://mlflow.org/)
 
-> Experimentation platform for RAG pipelines with automatic **LLM-as-a-Judge** evaluation, MLflow tracking, and 100% declarative YAML configuration.
+> Experimentation platform for RAG pipelines with automatic **LLM-as-a-Judge** evaluation, MLflow tracking, and 100% declarative YAML configuration. Compares a vanilla implementation against **LlamaIndex** on the same benchmark.
 
 ---
 
@@ -45,6 +45,7 @@ This project is not just "yet another RAG." It is an **experimentation platform*
 - **Embedding cache** - running two experiments with the same chunking does not bill OpenAI twice
 - **MLflow tracking** - all parameters, metrics, and artifacts versioned with a native comparison UI
 - **Cost as a feature** - `tiktoken` estimates tokens before each call; cumulative cost is logged per experiment
+- **Framework comparison** - the same benchmark runs against a vanilla implementation and a LlamaIndex implementation, isolating the framework contribution
 
 ---
 
@@ -76,7 +77,7 @@ python scripts/generate_architecture_image.py
 | **Chunking** | `langchain-text-splitters` | `RecursiveCharacterTextSplitter` is state of the art |
 | **Embeddings** | `openai` SDK (`text-embedding-3-small`) | Abstraction allows swapping to `voyage`, `cohere` |
 | **Vector Store** | `pinecone` v8 | Native namespaces, free serverless tier |
-| **LLM** | `openai` SDK (`gpt-5.4-mini`) | Stronger generation quality with moderate cost |
+| **LLM** | `openai` SDK (`gpt-4o-mini`) | Strong generation quality with low cost |
 | **Config** | `pydantic` v2 + `pyyaml` | Validates on load, fails before the API call |
 | **CLI** | `typer` | Declarative, type-safe |
 | **Tracking** | `mlflow` >= 2.10 | Built-in UI, side-by-side comparison |
@@ -86,7 +87,8 @@ python scripts/generate_architecture_image.py
 | **Tokenization** | `tiktoken` | Cost estimation before each call |
 | **Similarity** | `numpy` + `scikit-learn` | Semantic deduplication of QA pairs |
 | **Cache** | `pandas` + parquet | Embeddings reused across experiments |
-| **Tests** | `pytest` + mocks | 47 tests, no network, <2s |
+| **Tests** | `pytest` + mocks | 73+ tests, no network, <2s |
+| **LlamaIndex** | `llama-index-core` + Pinecone integration | Framework comparison (CP7–CP8) |
 
 ---
 
@@ -118,8 +120,9 @@ rag-eval-lab/
 │   │   ├── validator.py              # cosine-similarity dedup + trivial filter
 │   │   └── dataset.py                # BenchmarkDataset: versioned save / load
 │   ├── rag/                          # [CP3] retriever + answerer + runner
-│   ├── evaluation/                   # [CP4] judge + metrics + HTML reporter
+│   ├── evaluation/                   # [CP4] judge + metrics
 │   ├── tracking/                     # [CP5] mlflow_logger
+│   ├── llamaindex/                   # [CP7] LlamaIndex pipeline
 │   └── utils/
 │       ├── io.py                     # sha256_of_file, read_json, write_json
 │       ├── llm_client.py             # OpenAI wrapper: retry + cost + json_mode
@@ -130,7 +133,9 @@ rag-eval-lab/
 │   ├── generate_benchmark.py         # CLI: corpus -> benchmark QA pairs
 │   ├── run_experiment.py             # [CP3] CLI: benchmark + retrieval -> results
 │   ├── evaluate_run.py               # [CP4] CLI: LLM-as-a-Judge
-│   └── compare_experiments.py        # [CP5] CLI: generates comparison report
+│   ├── log_to_mlflow.py              # [CP5] CLI: log experiments to MLflow
+│   ├── generate_report.py            # [CP6] CLI: generates HTML comparison report
+│   └── run_llamaindex_experiment.py  # [CP7] CLI: LlamaIndex RAG runner
 │
 ├── tests/
 │   ├── conftest.py                   # FakeOpenAIClient fixture
@@ -249,14 +254,22 @@ Each RAG answer is evaluated across **3 metrics** by a judge LLM (`gpt-5.4-mini`
 
 ## Results
 
-> Results will be filled in after running the 4 experiments (CP6).
+Benchmark: **150 questions** · Corpus: `agentic_ai_landscape.pdf` · Judge: `gpt-4o-mini` (n_reps=3)
 
-| exp_id | chunk | top_k | Faith | Relev | Recall | Overall | Cost |
-|---|---|---|---|---|---|---|---|
-| exp_001 | 256 | 5 | - | - | - | - | - |
-| exp_002 | 512 | 5 | - | - | - | - | - |
-| exp_003 | 128 | 10 | - | - | - | - | - |
-| exp_004 | 256 | 3 | - | - | - | - | - |
+| Experiment | Chunk | top_k | Faithfulness | Relevancy | Recall | **Composite** | Empty Ctx |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **exp_003** (chunk=128, top_k=10) | 128 | 10 | 4.97 | 2.97 | **3.30** | **3.75 ✓** | 20.7% |
+| exp_001 (chunk=256, top_k=5) | 256 | 5 | 4.97 | 2.99 | 3.13 | 3.70 | 38.7% |
+| exp_004 (chunk=256, top_k=3) | 256 | 3 | 4.99 | 2.74 | 2.83 | 3.52 | 45.3% |
+| exp_002 (chunk=512, top_k=5) | 512 | 5 | 4.99 | 2.55 | 2.56 | 3.37 | 52.7% |
+
+**Key findings:**
+- **Winner: exp_003** — smaller chunks (128) with more candidates (top_k=10) achieved the best composite score and lowest empty context rate
+- **Faithfulness ≈ 5.0 across all experiments** — the model consistently grounds answers in retrieved context
+- **Larger chunks (512) hurt retrieval** — more context per chunk dilutes the signal, leading to the highest empty context rate
+- **Relevancy is gated by retrieval** — when no chunks pass the score threshold, the model answers "not enough information", which the judge penalises
+
+Full interactive report: `reports/comparison_report.html` · MLflow UI: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
 
 ---
 
@@ -280,13 +293,14 @@ pytest -v
 
 ## Roadmap
 
-- [ ] **CP3** - RAG Runner + YAML configs (sequential runner, `run_results.json`)
-- [ ] **CP4** - LLM-as-a-Judge (faithfulness, relevancy, recall with 3 repetitions)
-- [ ] **CP5** - MLflow tracking + comparative HTML report
-- [ ] **CP6** - E2E pipeline + final README with real results and insights
-- [ ] Re-ranking with a cross-encoder
-- [ ] Hybrid search (BM25 + vector)
-- [ ] Async runner to parallelize LLM calls
+- [x] **CP3** - RAG Runner + YAML configs (parallel runner, `run_results.json`)
+- [x] **CP4** - LLM-as-a-Judge (faithfulness, relevancy, recall with 3 repetitions + OpenAI Batch API)
+- [x] **CP5** - MLflow tracking (SQLite backend, parameters + metrics + artifacts)
+- [x] **CP6** - HTML comparison report + README with real results and insights
+- [ ] **CP7** - LlamaIndex implementation: rebuild the RAG pipeline with `llama-index-core` + Pinecone, run the same 4 configs against the same benchmark
+- [ ] **CP8** - Framework comparison: vanilla vs LlamaIndex side-by-side in MLflow + updated comparison report with conclusions
+- [ ] Hybrid search (BM25 + dense vectors via Pinecone sparse-dense)
+- [ ] Cross-encoder re-ranking
 
 ---
 

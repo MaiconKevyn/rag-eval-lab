@@ -7,6 +7,7 @@
 set -uo pipefail
 
 BENCHMARK_PATH="${1:-$(ls -t data/benchmark/benchmark_v1_*.json 2>/dev/null | head -1)}"
+MAX_QUESTIONS="${MAX_QUESTIONS:-150}"
 
 if [[ -z "$BENCHMARK_PATH" ]]; then
   echo "ERROR: No benchmark found in data/benchmark/. Run generate_benchmark.py first." >&2
@@ -36,7 +37,7 @@ for config in "${configs[@]}"; do
     echo "--- Ingest: $config ---"
     python scripts/ingest_corpus.py --config "$config" --rebuild
     echo "--- RAG run: $config ---"
-    python scripts/run_experiment.py --config "$config" --benchmark "$BENCHMARK_PATH" --force
+    python scripts/run_experiment.py --config "$config" --benchmark "$BENCHMARK_PATH" --max-questions "$MAX_QUESTIONS" --force
   } >"$logfile" 2>&1 &
   pids+=($!)
 done

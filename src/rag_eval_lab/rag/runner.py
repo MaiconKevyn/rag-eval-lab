@@ -78,6 +78,7 @@ def run_experiment(
     *,
     benchmark_path: str | Path | None = None,
     force: bool = False,
+    max_questions: int | None = None,
     llm_client: LLMClient | None = None,
     store: PineconeStore | None = None,
     ingest_fn: Callable[..., Any] = ingest,
@@ -136,8 +137,9 @@ def run_experiment(
         MofNCompleteColumn(),
         TimeElapsedColumn(),
     ) as progress:
-        task = progress.add_task("Running RAG", total=len(benchmark.qa_pairs))
-        for qa_pair in benchmark.qa_pairs:
+        qa_pairs = benchmark.qa_pairs[:max_questions] if max_questions else benchmark.qa_pairs
+        task = progress.add_task("Running RAG", total=len(qa_pairs))
+        for qa_pair in qa_pairs:
             started = perf_counter()
             context = retriever.retrieve(qa_pair.question)
             completion = answerer.answer(qa_pair.question, context)

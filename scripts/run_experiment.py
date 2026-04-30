@@ -28,6 +28,7 @@ def main(
         help="Optional benchmark override. Required if the YAML does not define one.",
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite existing run_results.json."),
+    max_questions: int | None = typer.Option(None, "--max-questions", help="Limit number of QA pairs evaluated."),
     log_level: str = typer.Option("INFO", "--log-level", help="Logging level."),
 ) -> None:
     setup_logging(log_level)
@@ -38,6 +39,7 @@ def main(
         exp_config,
         benchmark_path=benchmark,
         force=force,
+        max_questions=max_questions,
     )
     report = RunResults.load(output_path)
 

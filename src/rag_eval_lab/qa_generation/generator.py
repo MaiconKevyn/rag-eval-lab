@@ -55,7 +55,7 @@ class QAGenerator:
     def __init__(
         self,
         llm_client: LLMClient,
-        model: str = "gpt-5.4-mini",
+        model: str = "gpt-4o-mini",
         n_per_chunk: int = 3,
         temperature: float = 0.7,
     ) -> None:

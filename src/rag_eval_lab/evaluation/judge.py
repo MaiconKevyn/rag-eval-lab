@@ -15,6 +15,14 @@ from dataclasses import dataclass, field
 from statistics import median
 from typing import Any
 
+# Short codes used in batch custom_ids to stay under the 64-char limit.
+# Format: "{qa_id}:{metric_code}:{rep}"  e.g. "abc-123:f:0"
+_METRIC_CODES: dict[str, str] = {
+    "f": "faithfulness",
+    "r": "answer_relevancy",
+    "c": "context_recall",
+}
+
 from rag_eval_lab.rag.runner import QuestionRunResult, RetrievedContextRecord
 from rag_eval_lab.utils.llm_client import LLMClient
 from rag_eval_lab.utils.logging import get_logger
@@ -209,3 +217,87 @@ class LLMJudge:
             answer_relevancy_reasoning=r_reason,
             context_recall_reasoning=c_reason,
         )
+
+    # ── Batch API helpers ────────────────────────────────────────────────────
+
+    def build_batch_requests(
+        self, results: list[QuestionRunResult]
+    ) -> list[dict[str, Any]]:
+        """Build the flat list of batch requests for all results × metrics × reps."""
+        requests: list[dict[str, Any]] = []
+        for qr in results:
+            ctx = self._format_context(qr.retrieved_context)
+            prompts = {
+                "f": _FAITHFULNESS_PROMPT.format(
+                    question=qr.question, context=ctx, predicted_answer=qr.predicted_answer
+                ),
+                "r": _ANSWER_RELEVANCY_PROMPT.format(
+                    question=qr.question, predicted_answer=qr.predicted_answer
+                ),
+                "c": _CONTEXT_RECALL_PROMPT.format(
+                    question=qr.question, expected_answer=qr.expected_answer, context=ctx
+                ),
+            }
+            for code, prompt in prompts.items():
+                for rep in range(self.n_reps):
+                    requests.append({
+                        "custom_id": f"{qr.qa_id}:{code}:{rep}",
+                        "method": "POST",
+                        "url": "/v1/chat/completions",
+                        "body": {
+                            "model": self.model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.0,
+                            "response_format": {"type": "json_object"},
+                        },
+                    })
+        return requests
+
+    def parse_batch_results(
+        self,
+        batch_output: list[dict[str, Any]],
+        results: list[QuestionRunResult],
+    ) -> list[QuestionScores]:
+        """Map batch output back to per-question scores using custom_ids."""
+        # Index raw output by custom_id
+        by_id: dict[str, dict[str, Any]] = {}
+        for item in batch_output:
+            cid = item.get("custom_id", "")
+            if item.get("error") is not None:
+                log.warning("Batch error for %s: %s", cid, item["error"])
+                continue
+            by_id[cid] = item.get("response", {}).get("body", {})
+
+        scores: list[QuestionScores] = []
+        for qr in results:
+            metric_scores: dict[str, list[int]] = {"f": [], "r": [], "c": []}
+            metric_reasons: dict[str, str] = {}
+
+            for code in ("f", "r", "c"):
+                for rep in range(self.n_reps):
+                    cid = f"{qr.qa_id}:{code}:{rep}"
+                    body = by_id.get(cid)
+                    if body is None:
+                        metric_scores[code].append(3)
+                        continue
+                    try:
+                        text = body["choices"][0]["message"]["content"]
+                        data = json.loads(text)
+                        score = max(1, min(5, int(data["score"])))
+                        metric_scores[code].append(score)
+                        if data.get("reasoning"):
+                            metric_reasons[code] = str(data["reasoning"])
+                    except Exception:
+                        metric_scores[code].append(3)
+
+            scores.append(QuestionScores(
+                qa_id=qr.qa_id,
+                faithfulness=float(median(metric_scores["f"] or [3])),
+                answer_relevancy=float(median(metric_scores["r"] or [3])),
+                context_recall=float(median(metric_scores["c"] or [3])),
+                faithfulness_reasoning=metric_reasons.get("f", ""),
+                answer_relevancy_reasoning=metric_reasons.get("r", ""),
+                context_recall_reasoning=metric_reasons.get("c", ""),
+            ))
+
+        return scores

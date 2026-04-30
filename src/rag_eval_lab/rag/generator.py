@@ -21,7 +21,7 @@ class Answerer:
         self,
         llm_client: LLMClient,
         *,
-        model: str = "gpt-5.4-mini",
+        model: str = "gpt-4o-mini",
         system_prompt: str,
         temperature: float = 0.0,
         max_tokens: int = 512,

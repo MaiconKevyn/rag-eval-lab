@@ -9,6 +9,8 @@ set -uo pipefail
 
 MODEL="${MODEL:-gpt-4o-mini}"
 N_REPS="${N_REPS:-3}"
+BATCH="${BATCH:-true}"   # use OpenAI Batch API by default (separate limits, 50% cheaper)
+MAX_QUESTIONS="${MAX_QUESTIONS:-150}"
 
 experiments=(
   exp_001_chunk256_ada
@@ -30,11 +32,16 @@ for exp in "${experiments[@]}"; do
 
   logfile="logs/${exp}_cp4.log"
   echo "==> Starting $exp  →  $logfile"
+  batch_flag=""
+  [[ "$BATCH" == "true" ]] && batch_flag="--batch"
+
   python scripts/evaluate_run.py \
     --run "$run_file" \
     --model "$MODEL" \
     --n-reps "$N_REPS" \
+    --max-questions "$MAX_QUESTIONS" \
     --force \
+    $batch_flag \
     >"$logfile" 2>&1 &
   pids+=($!)
 done
