@@ -8,6 +8,7 @@ and the YAML config if it exists.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,16 @@ _EVALS_DIR = Path("data/evals")
 _CONFIGS_DIR = Path("configs")
 
 
-def log_experiment(experiment_id: str, tracking_uri: str = "mlruns") -> str:
+def _detect_framework(experiment_id: str) -> str:
+    return "llamaindex" if experiment_id.endswith("_llamaindex") else "vanilla"
+
+
+def _comparison_key(experiment_id: str) -> str:
+    match = re.match(r"^(exp_\d+)", experiment_id)
+    return match.group(1) if match else experiment_id.removesuffix("_llamaindex")
+
+
+def log_experiment(experiment_id: str, tracking_uri: str = "sqlite:///mlflow.db") -> str:
     """Log one experiment to MLflow. Returns the MLflow run_id."""
     run_path = _RUNS_DIR / experiment_id / "run_results.json"
     metrics_path = _EVALS_DIR / experiment_id / "metrics.json"
@@ -52,7 +62,7 @@ def log_experiment(experiment_id: str, tracking_uri: str = "mlruns") -> str:
         return run_id
 
 
-def log_all_experiments(tracking_uri: str = "mlruns") -> dict[str, str]:
+def log_all_experiments(tracking_uri: str = "sqlite:///mlflow.db") -> dict[str, str]:
     """Log all experiments that have both run_results.json and metrics.json."""
     results: dict[str, str] = {}
     for run_dir in sorted(_RUNS_DIR.iterdir()):
@@ -79,6 +89,7 @@ def _log_params(run_data: dict[str, Any]) -> None:
     generation = cfg.get("generation", {})
 
     mlflow.log_params({
+        "framework": _detect_framework(run_data.get("experiment_id", "")),
         "chunk_size": chunking.get("chunk_size"),
         "chunk_overlap": chunking.get("chunk_overlap"),
         "embedding_model": embedding.get("model"),
@@ -115,7 +126,10 @@ def _log_metrics(
 
 
 def _log_tags(run_data: dict[str, Any], metrics_data: dict[str, Any]) -> None:
+    exp_id = run_data.get("experiment_id", "")
     mlflow.set_tags({
+        "framework": _detect_framework(exp_id),
+        "comparison_key": _comparison_key(exp_id),
         "benchmark_version": run_data.get("benchmark_version", ""),
         "judge_model": metrics_data.get("judge_model", ""),
         "n_reps": metrics_data.get("n_reps", ""),

@@ -24,7 +24,7 @@ def main(
         help="Log a single experiment. Omit to log all.",
     ),
     tracking_uri: str = typer.Option(
-        "mlruns", "--tracking-uri",
+        "sqlite:///mlflow.db", "--tracking-uri",
         help="MLflow tracking URI (local path or remote server).",
     ),
     log_level: str = typer.Option("INFO", "--log-level"),

@@ -1,0 +1,27 @@
+experiment_id: "exp_004_llamaindex"
+description: "LlamaIndex — chunk_size=256, text-embedding-3-small, top_k=3"
+corpus: "data/corpus/agentic_ai_landscape.pdf"
+benchmark: "data/benchmark/benchmark_v1_157d1689_2026-04-25.json"
+
+chunking:
+  chunk_size: 256
+  chunk_overlap: 32
+  separators: ["\n\n", "\n", ". ", " "]
+
+embedding:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  batch_size: 100
+
+retrieval:
+  top_k: 3
+  score_threshold: 0.65
+
+generation:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  temperature: 0.0
+  max_tokens: 512
+  system_prompt: |
+    You are an assistant that answers questions using ONLY the provided context.
+    If the context is insufficient, say "There is not enough information in the context."

@@ -40,6 +40,10 @@ dependencies = [
     # Numerical
     "numpy>=1.26.0",
     "scikit-learn>=1.4.0",
+    # LlamaIndex (CP7)
+    "llama-index-core>=0.12.0",
+    "llama-index-vector-stores-pinecone>=0.4.0",
+    "llama-index-embeddings-openai>=0.3.0",
 ]
 
 [project.optional-dependencies]

@@ -297,7 +297,7 @@ pytest -v
 - [x] **CP4** - LLM-as-a-Judge (faithfulness, relevancy, recall with 3 repetitions + OpenAI Batch API)
 - [x] **CP5** - MLflow tracking (SQLite backend, parameters + metrics + artifacts)
 - [x] **CP6** - HTML comparison report + README with real results and insights
-- [ ] **CP7** - LlamaIndex implementation: rebuild the RAG pipeline with `llama-index-core` + Pinecone, run the same 4 configs against the same benchmark
+- [x] **CP7** - LlamaIndex implementation: `llama-index-core` + Pinecone pipeline, 4 configs, 150 questions each, best result matches vanilla (exp_003 empty_context=20.7%)
 - [ ] **CP8** - Framework comparison: vanilla vs LlamaIndex side-by-side in MLflow + updated comparison report with conclusions
 - [ ] Hybrid search (BM25 + dense vectors via Pinecone sparse-dense)
 - [ ] Cross-encoder re-ranking

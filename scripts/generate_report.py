@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""CP6 — Generate a static HTML comparison report from all metrics.json files."""
+"""CP6/CP8 — Generate a static HTML comparison report from metrics.json files."""
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,15 @@ log = get_logger(__name__)
 _EVALS_DIR = Path("data/evals")
 _RUNS_DIR = Path("data/runs")
 _REPORT_DIR = Path("reports")
+
+
+def _framework_from_experiment_id(experiment_id: str) -> str:
+    return "llamaindex" if experiment_id.endswith("_llamaindex") else "vanilla"
+
+
+def _comparison_key(experiment_id: str) -> str:
+    match = re.match(r"^(exp_\d+)", experiment_id)
+    return match.group(1) if match else experiment_id.removesuffix("_llamaindex")
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -82,7 +92,7 @@ _HTML_TEMPLATE = """\
 <div class="container">
   <h1>RAG Evaluation Lab</h1>
   <p class="subtitle">
-    Comparison report — {{ n_experiments }} experiments · {{ n_questions }} questions each ·
+    Comparison report — {{ n_experiments }} experiment runs · {{ n_questions }} questions each ·
     Judge: <code>{{ judge_model }}</code> (n_reps={{ n_reps }}) ·
     Generated {{ generated_at }}
   </p>
@@ -90,42 +100,80 @@ _HTML_TEMPLATE = """\
   <!-- summary cards -->
   <div class="cards">
     <div class="card">
-      <div class="card-label">Best Composite</div>
+      <div class="card-label">Best Overall</div>
       <div class="card-value">{{ best.composite_mean | round(3) }}</div>
-      <div class="card-sub">{{ best.experiment_id }}</div>
+      <div class="card-sub">{{ best.experiment_id }} · {{ best.framework }}</div>
     </div>
     <div class="card">
-      <div class="card-label">Best Recall</div>
-      <div class="card-value">{{ best_recall.context_recall_mean | round(3) }}</div>
-      <div class="card-sub">{{ best_recall.experiment_id }}</div>
+      <div class="card-label">Best Vanilla</div>
+      <div class="card-value">{{ best_vanilla.composite_mean | round(3) }}</div>
+      <div class="card-sub">{{ best_vanilla.experiment_id }}</div>
     </div>
     <div class="card">
-      <div class="card-label">Avg Faithfulness</div>
-      <div class="card-value">{{ avg_faithfulness | round(3) }}</div>
-      <div class="card-sub">across all experiments</div>
+      <div class="card-label">Best LlamaIndex</div>
+      <div class="card-value">{{ best_llamaindex.composite_mean | round(3) }}</div>
+      <div class="card-sub">{{ best_llamaindex.experiment_id }}</div>
     </div>
     <div class="card">
-      <div class="card-label">Lowest Empty Context</div>
-      <div class="card-value">{{ (best_recall.empty_context_rate * 100) | round(1) }}%</div>
-      <div class="card-sub">{{ best_recall.experiment_id }}</div>
+      <div class="card-label">Mean Delta</div>
+      <div class="card-value">{{ framework_delta_mean | round(3) }}</div>
+      <div class="card-sub">llamaindex composite minus vanilla</div>
     </div>
   </div>
 
   <!-- comparison table -->
-  <h2>Experiment Comparison</h2>
+  <h2>Framework Comparison</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Config Family</th>
+          <th>Chunk</th>
+          <th>top_k</th>
+          <th>Threshold</th>
+          <th>Vanilla Composite</th>
+          <th>LlamaIndex Composite</th>
+          <th>Delta</th>
+          <th>Vanilla Empty Ctx</th>
+          <th>LlamaIndex Empty Ctx</th>
+          <th>Vanilla Cost</th>
+          <th>LlamaIndex Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pair in comparisons %}
+        <tr>
+          <td>{{ pair.comparison_key }}</td>
+          <td>{{ pair.chunk_size }}</td>
+          <td>{{ pair.top_k }}</td>
+          <td>{{ pair.score_threshold }}</td>
+          <td>{{ pair.vanilla.composite_mean | round(3) }}</td>
+          <td>{{ pair.llamaindex.composite_mean | round(3) }}</td>
+          <td>{% if pair.delta_composite > 0 %}+{% endif %}{{ pair.delta_composite | round(3) }}</td>
+          <td>{{ (pair.vanilla.empty_context_rate * 100) | round(1) }}%</td>
+          <td>{{ (pair.llamaindex.empty_context_rate * 100) | round(1) }}%</td>
+          <td>${{ "%.4f"|format(pair.vanilla.total_cost_usd) }}</td>
+          <td>${{ "%.4f"|format(pair.llamaindex.total_cost_usd) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>All Experiment Runs</h2>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>Experiment</th>
+          <th>Framework</th>
           <th>Chunk</th>
           <th>top_k</th>
-          <th>Threshold</th>
           <th>Faithfulness</th>
           <th>Relevancy</th>
           <th>Recall</th>
-          <th>Composite ↑</th>
-          <th>Empty Ctx ↓</th>
+          <th>Composite</th>
+          <th>Empty Ctx</th>
           <th>Cost (USD)</th>
         </tr>
       </thead>
@@ -138,41 +186,13 @@ _HTML_TEMPLATE = """\
             <span class="badge badge-green">best</span>
             {% endif %}
           </td>
+          <td>{{ e.framework }}</td>
           <td>{{ e.chunk_size }}</td>
           <td>{{ e.top_k }}</td>
-          <td>{{ e.score_threshold }}</td>
-          <td>
-            {% if e.faithfulness_mean == best_faith %}
-            <span class="winner">{{ e.faithfulness_mean | round(3) }}</span>
-            {% else %}
-            {{ e.faithfulness_mean | round(3) }}
-            {% endif %}
-            <div class="bar-bg"><div class="bar-fill bar-faith"
-              style="width:{{ (e.faithfulness_mean / 5 * 100) | round }}%"></div></div>
-          </td>
-          <td>
-            {{ e.answer_relevancy_mean | round(3) }}
-            <div class="bar-bg"><div class="bar-fill bar-relev"
-              style="width:{{ (e.answer_relevancy_mean / 5 * 100) | round }}%"></div></div>
-          </td>
-          <td>
-            {% if e.context_recall_mean == best_recall.context_recall_mean %}
-            <span class="winner">{{ e.context_recall_mean | round(3) }}</span>
-            {% else %}
-            {{ e.context_recall_mean | round(3) }}
-            {% endif %}
-            <div class="bar-bg"><div class="bar-fill bar-recall"
-              style="width:{{ (e.context_recall_mean / 5 * 100) | round }}%"></div></div>
-          </td>
-          <td>
-            {% if e.experiment_id == best.experiment_id %}
-            <span class="winner">{{ e.composite_mean | round(3) }}</span>
-            {% else %}
-            {{ e.composite_mean | round(3) }}
-            {% endif %}
-            <div class="bar-bg"><div class="bar-fill bar-comp"
-              style="width:{{ (e.composite_mean / 5 * 100) | round }}%"></div></div>
-          </td>
+          <td>{{ e.faithfulness_mean | round(3) }}</td>
+          <td>{{ e.answer_relevancy_mean | round(3) }}</td>
+          <td>{{ e.context_recall_mean | round(3) }}</td>
+          <td>{{ e.composite_mean | round(3) }}</td>
           <td>{{ (e.empty_context_rate * 100) | round(1) }}%</td>
           <td>${{ "%.4f"|format(e.total_cost_usd) }}</td>
         </tr>
@@ -185,20 +205,17 @@ _HTML_TEMPLATE = """\
   <div class="insights">
     <h2 style="margin-top:0">Key Findings</h2>
     <ul>
-      <li><strong>Winner: {{ best.experiment_id }}</strong> — chunk_size={{ best.chunk_size }},
-          top_k={{ best.top_k }} achieved the highest composite score ({{ best.composite_mean | round(3) }})
-          and lowest empty context rate ({{ (best.empty_context_rate * 100) | round(1) }}%).</li>
-      <li><strong>Faithfulness ≈ 5.0 across all experiments</strong> — the generation model consistently
-          grounds its answers in the retrieved context, refusing to hallucinate when context is absent.</li>
-      <li><strong>Answer relevancy and recall are limited by empty context</strong> — when no chunks are
-          retrieved above the score threshold, the model responds "not enough information", which the judge
-          penalises. Improving retrieval recall is the highest-leverage next step.</li>
-      <li><strong>Larger chunks (512) hurt retrieval</strong> — {{ worst.experiment_id }} (chunk=512)
-          had the highest empty context rate ({{ (worst.empty_context_rate * 100) | round(1) }}%) and
-          the lowest composite ({{ worst.composite_mean | round(3) }}).</li>
-      <li><strong>Hybrid search is the recommended next experiment</strong> — combining BM25 sparse
-          vectors with dense embeddings in Pinecone should reduce empty context further and improve
-          recall for exact-match and rare-term queries.</li>
+      <li><strong>Best overall run: {{ best.experiment_id }}</strong> — {{ best.framework }}
+          reached composite {{ best.composite_mean | round(3) }} with empty-context
+          rate {{ (best.empty_context_rate * 100) | round(1) }}%.</li>
+      <li><strong>Framework comparison is now apples-to-apples</strong> — both implementations were
+          evaluated on the same benchmark sample and aligned chunking / retrieval settings.</li>
+      <li><strong>Mean framework delta:</strong> llamaindex minus vanilla =
+          {{ framework_delta_mean | round(3) }} composite points across the 4 config families.</li>
+      <li><strong>Best config family remains the main driver</strong> — the framework changes the
+          retrieval behavior less than the chunking and top-k strategy itself.</li>
+      <li><strong>Next step:</strong> use this report plus MLflow tags to decide whether LlamaIndex adds
+          quality, cost, or developer-velocity advantages large enough to justify its abstraction layer.</li>
     </ul>
   </div>
 
@@ -225,6 +242,8 @@ def _load_experiment(exp_dir: Path) -> dict | None:
 
     return {
         "experiment_id": metrics["experiment_id"],
+        "framework": _framework_from_experiment_id(metrics["experiment_id"]),
+        "comparison_key": _comparison_key(metrics["experiment_id"]),
         "chunk_size": cfg.get("chunking", {}).get("chunk_size", "?"),
         "top_k": cfg.get("retrieval", {}).get("top_k", "?"),
         "score_threshold": cfg.get("retrieval", {}).get("score_threshold", "?"),
@@ -238,6 +257,35 @@ def _load_experiment(exp_dir: Path) -> dict | None:
         "n_reps": metrics.get("n_reps", 0),
         "n_evaluated": metrics.get("n_evaluated", 0),
     }
+
+
+def _build_comparisons(experiments: list[dict]) -> list[dict]:
+    grouped: dict[str, dict[str, dict]] = {}
+    for exp in experiments:
+        key = exp["comparison_key"]
+        framework = exp["framework"]
+        grouped.setdefault(key, {})[framework] = exp
+
+    comparisons: list[dict] = []
+    for key, pair in sorted(grouped.items()):
+        vanilla = pair.get("vanilla")
+        llamaindex = pair.get("llamaindex")
+        if not vanilla or not llamaindex:
+            continue
+        comparisons.append(
+            {
+                "comparison_key": key,
+                "chunk_size": vanilla["chunk_size"],
+                "top_k": vanilla["top_k"],
+                "score_threshold": vanilla["score_threshold"],
+                "vanilla": vanilla,
+                "llamaindex": llamaindex,
+                "delta_composite": round(
+                    llamaindex["composite_mean"] - vanilla["composite_mean"], 4
+                ),
+            }
+        )
+    return comparisons
 
 
 @app.command()
@@ -269,20 +317,28 @@ def main(
         raise typer.Exit(1)
 
     experiments.sort(key=lambda e: e["composite_mean"], reverse=True)
+    comparisons = _build_comparisons(experiments)
+    if not comparisons:
+        typer.echo("Need both vanilla and llamaindex metrics to build the CP8 comparison report.")
+        raise typer.Exit(1)
+
     best = experiments[0]
     worst = experiments[-1]
-    best_recall = max(experiments, key=lambda e: e["context_recall_mean"])
-    best_faith = max(e["faithfulness_mean"] for e in experiments)
-    avg_faithfulness = sum(e["faithfulness_mean"] for e in experiments) / len(experiments)
+    vanilla_runs = [e for e in experiments if e["framework"] == "vanilla"]
+    llamaindex_runs = [e for e in experiments if e["framework"] == "llamaindex"]
+    best_vanilla = max(vanilla_runs, key=lambda e: e["composite_mean"])
+    best_llamaindex = max(llamaindex_runs, key=lambda e: e["composite_mean"])
+    framework_delta_mean = sum(c["delta_composite"] for c in comparisons) / len(comparisons)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     html = Template(_HTML_TEMPLATE).render(
         experiments=experiments,
+        comparisons=comparisons,
         best=best,
         worst=worst,
-        best_recall=best_recall,
-        best_faith=best_faith,
-        avg_faithfulness=avg_faithfulness,
+        best_vanilla=best_vanilla,
+        best_llamaindex=best_llamaindex,
+        framework_delta_mean=framework_delta_mean,
         n_experiments=len(experiments),
         n_questions=experiments[0]["n_evaluated"],
         judge_model=experiments[0]["judge_model"],
@@ -293,8 +349,9 @@ def main(
 
     typer.echo("")
     typer.echo("── Report Generated ─────────────────────────────")
-    typer.echo(f"  experiments : {len(experiments)}")
-    typer.echo(f"  winner      : {best['experiment_id']} (composite={best['composite_mean']:.3f})")
+    typer.echo(f"  experiment runs : {len(experiments)}")
+    typer.echo(f"  comparisons     : {len(comparisons)}")
+    typer.echo(f"  winner          : {best['experiment_id']} (composite={best['composite_mean']:.3f})")
     typer.echo(f"  saved to    : {output}")
     typer.echo("─────────────────────────────────────────────────")
     typer.echo("Done.")

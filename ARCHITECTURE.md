@@ -270,7 +270,13 @@ Key design decisions:
 - The same score_threshold, top_k, chunk_size, and embedding model are configured to ensure a fair comparison.
 
 Current status:
-- Planned. Starting after CP6 merge.
+- Complete. src/rag_eval_lab/llamaindex/ package: indexer.py (LlamaIndexResources + PineconeVectorStore,
+  lazy LlamaIndex imports), retriever.py (VectorStoreQuery with vanilla OpenAI embedder for token tracking),
+  runner.py (identical RunResults format as vanilla).
+- scripts/run_llamaindex_experiment.py CLI with --force and --rebuild flags.
+- 4 configs (exp_001–004_llamaindex) mirror vanilla params exactly; embedding cache reused ($0.00 re-ingestion cost).
+- All 4 experiments validated: 150 questions each. exp_003_llamaindex leads (empty_context=20.7%,
+  matching vanilla pattern). Cost $0.0055–$0.0092 per run.
 
 ### CP8 - Framework Comparison Report
 

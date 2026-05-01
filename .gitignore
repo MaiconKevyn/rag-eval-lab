@@ -25,9 +25,11 @@ venv/
 data/runs/
 data/benchmark/
 data/cache/
+data/evals/
 
 # MLflow
 mlruns/
+mlflow.db
 
 # Reports (generated)
 reports/*.html
